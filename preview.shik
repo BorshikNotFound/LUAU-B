@@ -1,0 +1,11 @@
+print([[
+
+    welcome to Luau:B
+    (Luau: Borshikified)
+
+    this is a programming language meant to bring roblox luau to your computer
+    luau:b can modify files, open windows and so much more
+
+    documentation: https://borshik.is-a.dev/luaub
+
+]])

@@ -47,12 +47,12 @@ def lexer ():
     result = []
 
     instring, incomment, escaped, lastescaped = False, False, False, False
-    rstring, stringtype, last = "", "", ""
+    rstring, stringtype, commenttype, last = "", "", "", ""
     x = 0
     while x < len(contents):
         char = contents[x]
 
-        if incomment:
+        if incomment and commenttype ==  "--":
             if char == "\n":
                 incomment = False
                 last = char
@@ -66,7 +66,9 @@ def lexer ():
 
         if char == "-" and last == "-" and not (escaped or lastescaped) and not instring:
             incomment = True
+            commenttype = "--"
             x += 1
+            if result and result[-1] == ["operator", "-"]: result.pop(-1)
             continue
         if not (instring and stringtype == "[[") and char == "\n":
             if instring:
@@ -85,7 +87,6 @@ def lexer ():
 
         if instring:
             if char == stringtype and stringtype != "[[" and not escaped:
-                rstring = rstring.replace("\\n", "\n").replace("\\t", "\t")
                 result.append(["string", rstring])
                 rstring, stringtype, last = "", "", char
                 lastescaped = escaped
@@ -101,6 +102,21 @@ def lexer ():
                 lastescaped = escaped
                 escaped = False
                 instring = False
+                x += 1
+                continue
+
+            if char == "n" and escaped and stringtype != "[[":
+                rstring += "\n"
+                last = "n"
+                lastescaped = True
+                escaped = False
+                x += 1
+                continue
+            if char == "t" and escaped and stringtype != "[[":
+                rstring += "\t"
+                last = "t"
+                lastescaped = True
+                escaped = False
                 x += 1
                 continue
 
@@ -138,6 +154,7 @@ def lexer ():
                 if x + 1 < len(contents):
                     if contents[x+1] == "=":
                         result.append(["operator", f"{check}="])
+                        last = "="
                         x += 2
                         tcontinue = True
                         continue
@@ -145,56 +162,67 @@ def lexer ():
                         result.append(["operator", check])
                         x += 1
                         tcontinue = True
+                        last = check
                         continue
                 else:
                     result.append(["operator", check])
                     x += 1
                     tcontinue = True
+                    last = check
                     continue
         if tcontinue == True: continue
         if char == "~" and not escaped:
             if x + 1 < len(contents):
                 if contents[x+1] == "=":
                     result.append(["operator", "~="])
+                    last = "="
                     x += 2
                     continue
         if char == "." and not escaped:
             if x + 2 < len(contents):
                 if contents[x+2] == contents[x+1] and contents[x+1] == ".":
                     result.append(["operator", "..."])
+                    last = "."
                     x += 3
                     continue
                 elif contents[x+2] == "=" and contents[x+1] == ".":
                     result.append(["operator", "..="])
+                    last = "="
                     x += 3
                     continue
                 else:
                     if contents[x+1] == ".":
                         result.append(["operator", ".."])
+                        last = "."
                         x += 2
                         continue
                     else:
                         result.append(["symbol", "."])
+                        last = "."
                         x += 1
                         continue
             else:
                 if x + 1 < len(contents):
                     if contents[x+1] == ".":
                         result.append(["operator", ".."])
+                        last = "."
                         x += 2
                         continue
                     else:
                         result.append(["symbol", "."])
+                        last = "."
                         x += 1
                         continue
                 else:
                     result.append(["symbol", "."])
+                    last = "."
                     x += 1
                     continue
         tcontinue = False
         for check in ["^", "%"]:
             if char == check and not escaped:
                 result.append(["operator", check])
+                last = check
                 x += 1
                 tcontinue = True
                 continue
@@ -220,4 +248,3 @@ def lexer ():
         print("\033[33mWARN:\033[0m Empty script")
         return
     return result
-print(lexer())

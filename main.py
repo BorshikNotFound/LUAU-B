@@ -9,7 +9,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 import random
 import os
 import sys
-import string
+import string as streeeng
 
 version = "shik/dev-0.1"
 
@@ -53,7 +53,7 @@ def lexer ():
     result = []
 
     def getline (n):
-        linenumber = 0
+        linenumber = 1
         for index in range(len(contents)):
             if index > n:
                 break
@@ -114,7 +114,6 @@ def lexer ():
             if instring:
                 print(f"\033[1;31mFATAL:\033[0m Unterminated string\n\033[1mLine {getline(x)}\033[0m")
                 sys.exit(1)
-            result.append(["newline", "newline"])
             lastescaped = escaped
             last, escaped = char, False
             x += 1
@@ -365,7 +364,7 @@ def lexer ():
                     candidate = candidate.lower()
                     args = candidate.split("e")
                     if len(args) != 2 or args[1] == "":
-                        print(f"\033[1;31mFATAL:\033[0m Invalid scientific notation format\nExample of the correct format: 12e4\n\033[1mLine {getline()}\033[0m")
+                        print(f"\033[1;31mFATAL:\033[0m Invalid scientific notation format\nExample of the correct format: 12e4\n\033[1mLine {getline(x)}\033[0m")
                         sys.exit(1)
                     try:
                         num = str(float(args[0]) * (10 ** int(args[1])))
@@ -400,7 +399,7 @@ def lexer ():
                         try:
                             num = str(int(candidate, 2))
                         except ValueError:
-                            print(f"\033[1;31mFATAL:\033[0m Failed to convert {candidate} into Base 2 (Binary)\n\033[1mLine {getline()}\033[0m")
+                            print(f"\033[1;31mFATAL:\033[0m Failed to convert {candidate} into Base 2 (Binary)\n\033[1mLine {getline(x)}\033[0m")
                             sys.exit(1)
 
                         result.append(["number", num])
@@ -416,10 +415,10 @@ def lexer ():
                         print(f"\033[1;31mFATAL:\033[0m Invalid base 16 format\nExample of the correct format: 0xA911\n\033[1mLine {getline(x)}\033[0m")
                         sys.exit(1)
 
-        if char in list(string.ascii_letters) + ["_"] and not escaped:
+        if char in list(streeeng.ascii_letters) + ["_"] and not escaped:
             identifier = ""
             for n in range(len(contents) - x):
-                if contents[x+n] in list(string.ascii_letters) + list(string.digits) + ["_"]:
+                if contents[x+n] in list(streeeng.ascii_letters) + list(streeeng.digits) + ["_"]:
                     identifier += contents[x+n]
                 else:
                     break
@@ -451,7 +450,7 @@ def lexer ():
                 continue
 
 
-        if not char in string.ascii_letters + "01234567890_~*=-+/^#%.(){}[]\n\t:;\"',! ":
+        if not char in streeeng.ascii_letters + "01234567890_~*=-+/^#%.(){}[]\n\t:;\"',! ":
             print(f"WARNING: Unknown character {char!r}\n\033[1mLine {getline(x)}\033[0m")
 
         last, lastescaped = char, escaped
@@ -469,4 +468,290 @@ def lexer ():
     return result
 
 
-lexer() # <-- temporary
+class nodetype: pass
+class number (nodetype):
+    def __init__ (self, n):
+        self.value = n
+class string (nodetype):
+    def __init__ (self, s):
+        self.value = s
+class assignment (nodetype):
+    def __init__ (self, type, name, contents):
+        self.left = name
+        self.right = contents
+        self.type = type
+class OR (nodetype):
+    def __init__ (self, left, right):
+        self.left = left
+        self.right = right
+class AND (nodetype):
+    def __init__ (self, left, right):
+        self.left = left
+        self.right = right
+class IFstatement (nodetype):
+    def __init__ (self, condition, body):
+        self.condition = condition
+        self.body = body
+class Bexpression (nodetype):
+    def __init__ (self, left, operator, right):
+        self.left = left
+        self.operator = operator
+        self.right = right
+class varieable (nodetype):
+    def __init__ (self, name):
+        self.name = name
+class functioncall (nodetype):
+    def __init__ (self, name, args):
+        self.function = name
+        self.args = args
+class functiondef (nodetype):
+    def __init__ (self, name, args, body):
+        self.name = name
+        self.args = args
+        self.body = body
+class RETURN (nodetype):
+    def __init__ (self, value):
+        self.value = value
+class memberaccess (nodetype):
+    def __init__ (self, obj, child):
+        self.object = obj
+        self.child = child
+class boolean (nodetype):
+    def __init__ (self, value):
+        self.value = value
+class nil:
+    pass
+
+def visualiseAST (nodes):
+    result = ""
+    treesymbol = ["├", "─", "└"]
+    depth = 0
+
+    def self (nodes, selfdepth):
+        nonlocal result
+
+        for node in nodes:
+            if isinstance(node, (nodetype, list)):
+                if isinstance(node, (number, string, boolean)):
+                    result += ("    "*selfdepth) + f"{treesymbol[2]}{treesymbol[1]} value: '{node.value}'\n"
+                if isinstance(node, Bexpression):
+                    nl = node.left
+                    if isinstance(node.left, (nodetype, list)): nl = f"{type(node.left).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} left: '{nl}'\n"
+                    self([node.left], selfdepth+1)
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} operator: '{node.operator}'\n"
+                    self([node.operator], selfdepth+1)
+                    nr = node.right
+                    if isinstance(node.right, (nodetype, list)): nr = f"{type(node.right).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[2]}{treesymbol[1]} right: '{nr}'\n"
+                    self([node.right], selfdepth+1)
+                if isinstance(node, assignment):
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} type: '{node.type}'\n"
+                    nl = node.left
+                    if isinstance(node.left, (nodetype, list)): nl = f"{type(node.left).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} left: '{nl}'\n"
+                    self([node.left], selfdepth+1)
+                    nr = node.right
+                    if isinstance(node.right, (nodetype, list)): nr = f"{type(node.right).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[2]}{treesymbol[1]} right: '{nr}'\n"
+                    self([node.right], selfdepth+1)
+                if isinstance(node, list):
+                    for n in node:
+                        nt = n
+                        if isinstance(n, (nodetype, list)): nt = f"{type(nt).__name__}"
+                        if node != [] and n == node[-1]:
+                            result += ("    "*selfdepth) + f"{treesymbol[2]}{treesymbol[1]} {nt}\n"
+                        else:
+                            result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} {nt}\n"
+                        self([n], selfdepth+1)
+                if isinstance(node, varieable):
+                    result += ("    "*selfdepth) + f"{treesymbol[2]}{treesymbol[1]} name: '{node.name}'\n"
+                if isinstance(node, functioncall):
+                    fun = node.function
+                    if isinstance(node.function, (nodetype, list)): fun = f"{type(node.function).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} function: '{fun}'\n"
+                    self([node.function], selfdepth+1)
+                    args = node.args
+                    if isinstance(node.args, (nodetype, list)): args = f"{type(node.args).__name__}"
+                    result += ("    "*selfdepth) + f"{treesymbol[0]}{treesymbol[1]} args: '{args}'\n"
+                    self([node.args], selfdepth+1)
+
+    for node in nodes:
+        result += f"{type(node).__name__}\n"
+        self([node], 1)
+
+    return result
+def parser (tokens, where):
+    result = [] # fun fact: this is called AST (abstract syntax tree)
+
+    def parseexpression (tokens, where):
+        while where < len(tokens): #ignorethisloopkthx
+            token = tokens[where]
+            tokentype, tokenvalue = token[0], token[1]
+
+            if tokentype == "string":
+                if len(tokens) > where + 2 and tokens[where+1][0] == "operator" and not tokens[where+1][1] in ["="]:
+                    right, nw = parseexpression(tokens, where+2)
+
+                    return Bexpression(string(tokenvalue), tokens[where+1][1], right), nw
+                return string(tokenvalue), where+1
+            if tokentype == "bool":
+                return boolean(tokenvalue), where+1
+            if tokentype == "nil":
+                return nil(), where+1
+            if tokentype == "number":
+                num = tokenvalue
+                add = 1
+                if len(tokens) > where + 2:
+                    if tokens[where+1] == ["symbol", "."] and tokens[where+2][0] == "number":
+                        num = f"{num}.{tokens[where+2][1]}"
+                        add = 3
+
+                if len(tokens) > where + 2 and tokens[where+1][0] == "operator" and not tokens[where+1][1] in ["="]:
+                    right, nw = parseexpression(tokens, where+2)
+
+                    return Bexpression(number(num), tokens[where+1][1], right), nw
+                return number(num), where + add
+            if tokentype == "identifier":
+                if len(tokens) > where + 1 and tokens[where+1] == ["symbol", "("]:
+                    args = []
+
+                    tmpwhere, x = where + 2, 0
+                    expectingargument = True
+                    while tmpwhere + x < len(tokens):
+                        if tokens[tmpwhere+x] == ["symbol", ","]:
+                            if expectingargument and len(args) != 0:
+                                print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected argument, got ','\n{tokenvalue}(...,) <-- HERE")
+                                sys.exit(1)
+                            expectingargument = True
+                            x += 1
+                            continue
+
+                        if tokens[tmpwhere+x] == ["symbol", ")"]:
+                            if expectingargument and len(args) != 0:
+                                print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected argument, got ')'\n{tokenvalue}(...,) <-- HERE")
+                                sys.exit(1)
+                            break
+
+                        argument, nw = parseexpression(tokens, tmpwhere+x)
+                        x = nw - tmpwhere
+                        args.append(argument)
+                        expectingargument = False
+
+                    node = functioncall(varieable(tokenvalue), args)
+                    where = tmpwhere + x + 1
+
+                    y = 0
+                    while len(tokens) > where + y:
+                        if tokens[where+y] == ["symbol", "("]:
+                            args = []
+                            tmpwhere = where + 2
+                            expectingargument = True
+                            x = 0
+                            while tmpwhere + x < len(tokens):
+                                if tokens[tmpwhere+x] == ["symbol", ","]:
+                                    if expectingargument and len(args) != 0:
+                                        print(f"\033[1;31mFATAL:\033[0m Syntax Error")
+                                        sys.exit(1)
+                                    expectingargument = True
+                                    x += 1
+                                    y += 1
+                                    continue
+
+                                if tokens[tmpwhere+x] == ["symbol", ")"]:
+                                    if expectingargument and len(args) != 0:
+                                        print(f"\033[1;31mFATAL:\033[0m Syntax Error")
+                                        sys.exit(1)
+                                    break
+
+                                argument, nw = parseexpression(tokens, tmpwhere+x)
+                                x = nw - tmpwhere
+                                args.append(argument)
+                                y += x
+                                expectingargument = False
+
+                            node = functioncall(node, args)
+                            where = tmpwhere + x + 1
+                        else:
+                            break
+
+                    return node, where
+                return varieable(tokenvalue), where+1
+
+            print(f"\033[1;31mFATAL:\033[0m Syntax Error\nUnknown token type '{tokentype}' value '{tokenvalue}' (parsing as expression)")
+            sys.exit(1)
+
+    while where < len(tokens): #ignorethislooptookthx
+        token = tokens[where]
+        tokentype, tokenvalue = token[0], token[1]
+
+        if token == ["keyword", "local"]:
+            x = 1
+            left = []
+            expectingargument = True
+            newwhere = 0
+            while where+x < len(tokens):
+                if expectingargument and tokens[where+x] == ["operator", "="]:
+                    print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
+                    sys.exit(1)
+
+                if tokens[where+x] == ["operator", "="]:
+                    break
+
+                if expectingargument:
+                    arg, nw = parseexpression(tokens, where+x)
+                    newwhere = nw
+                    left.append(arg)
+                    x += 1
+                    expectingargument = False
+                    continue
+                if tokens[where+x] == ["symbol", ","]:
+                    if expectingargument:
+                        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
+                        sys.exit(1)
+                    x += 1
+                    expectingargument = True
+                    continue
+
+            right = []
+            expectingargument = True
+            x = 1
+            while newwhere+x < len(tokens):
+                if tokens[newwhere+x] == ["operator", "="] and expectingargument:
+                    print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the right side)")
+                    sys.exit(1)
+
+                if expectingargument:
+                    arg, nw = parseexpression(tokens, newwhere+x)
+                    nnewwhere = nw
+                    right.append(arg)
+                    x += 1
+                    expectingargument = False
+                    continue
+
+                if tokens[newwhere+x] == ["symbol", ","]:
+                    if expectingargument:
+                        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
+                        sys.exit(1)
+                    x += 1
+                    expectingargument = True
+                    continue
+
+                if not expectingargument:
+                    break
+
+            result.append(assignment("local", left, right))
+            where = nnewwhere
+            continue
+        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nUnknown token type '{tokentype}' value '{tokenvalue}' (parsing as statement)")
+        sys.exit(1)
+
+    if len(result) == 0:
+        print("\033[33mWARNING:\033[0m Parser returned nothing (empty list)")
+        return
+    if verbose == True: print(f"\n\033[1mPARSER NODES:\033[0m\n\n{visualiseAST(result)}")
+    return result
+
+parser(lexer(), 0)
+
+# runtime here probably

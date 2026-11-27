@@ -46,10 +46,8 @@ except OSError as e:
     print(f"\033[1;31mFATAL:\033[0m failed to read script\n(OSError; {e})")
     sys.exit(1)
 
-
+keywords = ["if", "end", "then", "while", "self", "function", "break", "continue", "return", "else", "elseif", "for", "do", "in", "local", "and", "or", "not"]
 def lexer ():
-    keywords = ["if", "end", "then", "while", "self", "function", "break", "continue", "return", "else", "elseif", "for", "do", "in", "local", "and", "or", "not"]
-
     result = []
 
     def getline (n):
@@ -674,9 +672,20 @@ def parser (tokens, where):
                             where = tmpwhere + x + 1
                         else:
                             break
-
                     return node, where
                 return varieable(tokenvalue), where+1
+
+            if token == ["symbol", "("]:
+                node, nw = parseexpression(tokens, where+1)
+
+                if tokens[nw] != ["symbol", ")"]:
+                    print(f"\033[1;31mFATAL:\033[0m Syntax Error\nUnterminated parenthesis, missing ')'")
+                    sys.exit(1)
+                if nw == where + 2:
+                    print(f"\033[1;31mFATAL:\033[0m Syntax Error\nEmpty parenthesis")
+                    sys.exit(1)
+
+                return node, nw+1
 
             print(f"\033[1;31mFATAL:\033[0m Syntax Error\nUnknown token type '{tokentype}' value '{tokenvalue}' (parsing as expression)")
             sys.exit(1)
@@ -692,49 +701,54 @@ def parser (tokens, where):
             newwhere = 0
             while where+x < len(tokens):
                 if expectingargument and tokens[where+x] == ["operator", "="]:
-                    print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
+                    print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the left side)")
                     sys.exit(1)
 
                 if tokens[where+x] == ["operator", "="]:
                     break
 
-                if expectingargument:
-                    arg, nw = parseexpression(tokens, where+x)
-                    newwhere = nw
-                    left.append(arg)
-                    x += 1
-                    expectingargument = False
-                    continue
                 if tokens[where+x] == ["symbol", ","]:
                     if expectingargument:
-                        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
+                        print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the left side)")
                         sys.exit(1)
                     x += 1
                     expectingargument = True
                     continue
 
+                if expectingargument:
+                    arg, nw = parseexpression(tokens, where+x)
+                    newwhere = nw
+                    left.append(arg)
+                    x = nw-where
+                    expectingargument = False
+                    continue
+
+                if not expectingargument:
+                    break
+
             right = []
             expectingargument = True
             x = 1
+            nnewwhere = newwhere
             while newwhere+x < len(tokens):
                 if tokens[newwhere+x] == ["operator", "="] and expectingargument:
-                    print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the right side)")
+                    print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the right side)")
                     sys.exit(1)
+
+                if tokens[newwhere+x] == ["symbol", ","]:
+                    if expectingargument:
+                        print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the right side)")
+                        sys.exit(1)
+                    x += 1
+                    expectingargument = True
+                    continue
 
                 if expectingargument:
                     arg, nw = parseexpression(tokens, newwhere+x)
                     nnewwhere = nw
                     right.append(arg)
-                    x += 1
+                    x = nw-newwhere
                     expectingargument = False
-                    continue
-
-                if tokens[newwhere+x] == ["symbol", ","]:
-                    if expectingargument:
-                        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nExpected an argument while assigning a value (on the left side)")
-                        sys.exit(1)
-                    x += 1
-                    expectingargument = True
                     continue
 
                 if not expectingargument:
@@ -743,15 +757,104 @@ def parser (tokens, where):
             result.append(assignment("local", left, right))
             where = nnewwhere
             continue
-        print(f"\033[1;31mFATAL:\033[0mSyntax Error\nUnknown token type '{tokentype}' value '{tokenvalue}' (parsing as statement)")
+        else:
+            if tokentype == "identifier":
+                isassignment = False
+
+                x = 0
+                expectingargument = True
+                while where+x < len(tokens):
+                    if tokens[where+x] == ["operator", "="]:
+                        isassignment = True
+                        break
+                    if tokens[where+x] == ["symbol", ","]:
+                        if expectingargument:
+                            break
+                        expectingargument = True
+                        x += 1
+                        continue
+
+                    if not expectingargument and tokens[where+x][0] != "identifier":
+                        break
+                    else:
+                        x += 1
+                        expectingargument = False
+
+                if isassignment:
+                    x = 0
+                    expectingargument = True
+                    left = []
+                    newwhere = 0
+                    while len(tokens) > where+x:
+                        if tokens[where+x] == ["operator", "="]:
+                            if expectingargument:
+                                print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the left side)")
+                                sys.exit(1)
+                            break
+
+                        if tokens[where+x] == ["symbol", ","]:
+                            if expectingargument:
+                                print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the left side)")
+                                sys.exit(1)
+                            x += 1
+                            expectingargument = True
+                            continue
+
+                        if expectingargument:
+                            arg, nw = parseexpression(tokens, where+x)
+                            newwhere = nw
+                            left.append(arg)
+                            x = nw-where
+                            expectingargument = False
+                            continue
+
+                        if not expectingargument:
+                            break
+
+                    right = []
+                    expectingargument = True
+                    x = 1
+                    nnewwhere = newwhere
+                    while newwhere+x < len(tokens):
+                        if tokens[newwhere+x] == ["operator", "="] and expectingargument:
+                            print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the right side)")
+                            sys.exit(1)
+
+                        if tokens[newwhere+x] == ["symbol", ","]:
+                            if expectingargument:
+                                print(f"\033[1;31mFATAL:\033[0m Syntax Error\nExpected an argument while assigning a value (on the right side)")
+                                sys.exit(1)
+                            x += 1
+                            expectingargument = True
+                            continue
+
+                        if expectingargument:
+                            arg, nw = parseexpression(tokens, newwhere+x)
+                            nnewwhere = nw
+                            right.append(arg)
+                            x = nw-newwhere
+                            expectingargument = False
+                            continue
+
+                        if not expectingargument:
+                            break
+
+                    result.append(assignment("global", left, right))
+                    where = nnewwhere
+                    continue
+        print(f"\033[1;31mFATAL:\033[0m Syntax Error\nUnknown token type '{tokentype}' value '{tokenvalue}' (parsing as statement)")
         sys.exit(1)
 
     if len(result) == 0:
         print("\033[33mWARNING:\033[0m Parser returned nothing (empty list)")
         return
     if verbose == True: print(f"\n\033[1mPARSER NODES:\033[0m\n\n{visualiseAST(result)}")
-    return result
+    return result, None
 
-parser(lexer(), 0)
 
-# runtime here probably
+# RUNTIME STARTS HERE
+
+tokens = lexer()
+nodes = parser(tokens, 0)[0]
+
+#
